@@ -1,0 +1,172 @@
+= Virtual Memory Explanatory Material
+Version 0.1
+:doctype: article
+:encoding: utf-8
+:lang: en
+:toc: left
+:numbered:
+:stem: latexmath
+:le: &#8804;
+:ge: &#8805;
+:ne: &#8800;
+:approx: &#8776;
+:inf: &#8734;
+
+This document contains material produced by the RISC-V Virtual Memory task
+group to accompany its proposed updates to version 1.12 of the RISC-V
+Privileged ISA Specification.  It will likely continue to be filled in
+over time.
+
+For more information about the task group, please go to
+https://github.com/riscv/virtual-memory.
+
+== Canonical Patterns
+
+This section demonstrates some standard patterns that can be used by
+supervisor-mode software to manage the memory-management data
+structures.
+
+=== Changing Translations
+
+```
+st <PTE address>, <PTE with V=0>
+sfence.vma  # optionally with ASID, and/or VA if targeting a leaf PTE
+# send IPIs to other harts, to have them perform sfence.vma and then
+#   sync back using fences and a flag in memory
+st <PTE address>, <new PTE>
+```
+
+This example shows a standard pattern for changing a page table entry.  In
+general, the safest sequence to use involves invalidating the translation,
+issuing an `sfence.vma` on all harts, and only then updating the PTE to its
+new value.  This ensures that there is no window of time with both translations
+are simultaneously valid.
+
+In some special cases where the existence of multiple unique PTEs for the same
+virtual address is known to be benign, e.g., when adding permissions to a PTE,
+the "V=0" step can be skipped, and `sfence.vma` can be performed lazily.
+
+=== Swapping Out Pages
+
+```
+st <PTE address>, <PTE with V=0>
+sfence.vma
+# send IPIs to other harts, to have them perform sfence.vma and then
+#   sync back using fences and a flag in memory
+fence rw,io  # or stronger
+<issue I/O command to start DMA to disk>
+```
+
+This example shows a standard pattern for swapping out a page of main memory.
+The `sfence.vma` instructions ensure that no subsequent operations on any hart
+will continue using the old translation.  The `fence` ensures that all
+outstanding accesses to the page are ordered before the triggering of the DMA
+command.  Note that `fence` instructions ordering both I/O and memory will
+generally act as "completion fences" in order for this to work correctly.
+
+== Litmus Tests
+
+=== A/D Bit Updates
+
+```
+# a0 holds the memory address of a PTE with D=0
+<The OS acquires the appropriate lock(s) for the PTE in a0>
+<The HW page table walker loads a0 as part of step 2 in some page table walk>
+<The OS performs an atomic swap to a0, reading that D=0, and writing a PTE with V=0>
+<The HW page table walker sets bit 7 (dirty) of the same memory location,
+  which is no longer a valid PTE>
+<The OS swaps the page out without writing it back, since it thinks D=0>
+```
+
+This example shows the consequence of allowing step 7 in the translation
+algorithm to be performed non-atomically.  If the OS updates a page that is also
+concurrently being updated by a hardware page table walker, and step 7 is
+performed non-atomically, then it is possible the walker will write D=1 to a PTE
+that is no longer valid.  This could lead to the OS not realizing the page was
+written, which in turn could lead to data loss if the page is evicted from
+memory.  It could also clobber data written by the OS to the A/D bit positions
+in the invalid PTE's memory.  The atomicity requirement ensures that such
+situations will be avoided.
+
+```
+# a0 holds some memory address
+# The PTEs for both 0(a0) and 4096(a0) are NAPOT PTEs covering each
+# other in their range, and both start with A=D=0
+li a1, 4096
+li t1, 1
+add a1,a0,a1         # a1 = a0 + 4KiB
+lw t0, (a0)          # Load from a0, set PTE(a0).a = 1
+sw (a1), t1          # Store to 4096(a0), set PTE(a1).a = 1 and
+                     # PTE(a1).d = 1, and create address-translation
+                     # cache entries for both a0 and a1
+sw (a0), t1          # Store to 0(a0).  PTE(a0).d is still 0, because
+                     # the translation algorithm can hit on the
+                     # address-translation cache entry created in the
+                     # previous step
+```
+
+This example shows that NAPOT PTEs can create address-translation cache entries
+with accessed and/or dirty bits set to 1.  As the address-translation algorithm
+specifies, A and/or D bit updates will only be performed in memory, and only on
+the PTE identified by the algorithm.  In other words, even though both PTEs are
+NAPOT, a final outcome of __d__=1 for the PTE at `a0` and __d__=0 for
+the PTE at `a1` is not legal, because it is not consistent with executing
+the algorithm as specified.
+
+However, once the A and D bits have been updated, the new PTE value may be
+cached in the address-translation cache for all addresses in the range, and
+therefore a final outcome with __d__=0 for the PTE at `a0` is legal.  The
+translation algorithm executed for the final store might hit on one of those
+address-translation cache entries, and therefore will not need to update the PTE
+for `a0` in memory.
+
+=== Changing Modes During a Translation
+
+```
+# (a0) holds the address of a PTE accessible by a translation launched
+# given the current value of satp
+# Implicitly start a translation for the current satp value
+csrw satp, x0        # Switch to bare mode
+<M-mode updates the PTE at a0>
+<The previously-launched still-in-progress translation reads that updated PTE>
+<M-mode updates that same PTE again, to some other value>
+csrw satp, <prior value of satp>
+```
+
+This example shows that in-progress address translations (page table walks) are
+not terminated during a switch to `satp`.  At the end of this contrived
+example, it is legal for the address-translation cache to store any or all of
+the three values for the PTE at `a0`: the original value, the intermediate
+value, and the final value.  The middle choice is not consistent with executing
+the translation algorithm only while `satp` is valid and has not changed,
+but it is consistent with a translation process that started while `satp`
+was valid and continued even after `satp` was switched.
+
+=== SFENCE.VMA and In-Progress Translations
+
+```
+# Implicitly start a translation.  Get as far as loading satp atomically, then pause.
+csrw satp, <same ASID and MODE, different PPN>
+sfence.vma
+# Prior translation continues, using the old value of PPN?
+```
+
+The test above shows that SFENCE.VMA instructions with __rs1__=`x0`
+must order speculative executions of the address-translation algorithm.
+Otherwise, any translations that had proceeded only as far as reading `satp`
+might continue to use the old value of `satp`.PPN, which is no longer valid
+and might even now hold some unrelated data.  The same reasoning also applies at
+subsequent levels of the page table.
+
+```
+# Implicitly start a translation.  Get as far as loading satp atomically, then pause.
+csrw satp, <same ASID and MODE, different PPN>
+sfence.vma <old value of satp.ASID>, x0
+sd <old value of satp.PPN>, <new contents>
+# Prior translation continues, using the new value of PPN
+```
+
+This example shows that the same does not hold true for SFENCE.VMA instructions
+that apply only to leaf PTEs: a speculative execution of the address-translation
+algorithm may read a non-leaf PTE that was written after the SFENCE.VMA was
+executed.

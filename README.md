@@ -9,7 +9,9 @@ group, which is currently working on the following tasks:
 * Assorted other updates to the RISC-V virtual memory sections of the RISC-V
   privileged ISA
 
-The documentation is being developed on the (TBD) branch of the
+The documentation is being developed on the
+[virtual-memory](https://github.com/riscv/riscv-isa-manual/tree/virtual-memory)
+branch of the
 [riscv/riscv-isa-manual](https://github.com/riscv/riscv-isa-manual/)
 repository, since it is largely a set of small extensions to the existing
 privileged ISA specification.
@@ -19,3 +21,7 @@ privileged ISA specification.
 The repository is currently being maintained by the chair and vice-chair of
 the virtual memory task group: Daniel Lustig, dlustig@nvidia.com, and Ajay
 Ingle, Ajay.Ingle@wdc.com.
+
+# Test Cases
+
+We have started collecting a set of virtual memory test cases in [tests.adoc](tests.adoc).
