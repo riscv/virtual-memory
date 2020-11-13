@@ -1,0 +1,174 @@
+= Minutes for 2020-11-12
+
+Questions/comments/follow-up discussion welcome as always
+
+== Logistics
+
+We talked through the logistics discussed in the agenda email copied at the end
+of these minutes.
+
+Per discussion of those BoD passdowns, the changes that will go up for public
+review first are:
+
+* Added a custom encoding PTE bit for Sv39 and Sv48
+* Describe the behavior of address-translation caches a little more explicitly
+* Allowed for speculative updates of page table entry A bits
+* Slightly relaxed the atomicity requirement for A and D bit updates
+  performed by the implementation
+* Added NAPOT translation contiguity support (Zsn) for Sv39 and Sv48
+
+Discussion on the to-do list items included:
+
+* Picking an extension name and letters for NAPOT PTEs
+** The most likely candidate seems to be "Zsn", a subset of "S" for supervisor
+** Then, later, "Zsa" for virtual attributes
+* Figuring out how to make the existence and sizes of NAPOT PTEs
+  discoverable
+** Per mailing list discussion, we should both mandate traps on reserved PTE
+   fields as a self-discovery mechanism, and also add NAPOT translation
+   contiguity information to the mmu-type field in the device tree
+* Our changes will merge into Privileged ISA 1.12 (currently a draft)
+* Likely update Spike before freeze, then the formal model sometime after
+* I started collecting test cases at this link:
+  https://github.com/riscv/virtual-memory/blob/master/tests.adoc
+  Please contribute any additions or corrections, and/or send them to me
+  and I can help asciidoc-ify and incorporate them
+
+Virtual address attributes will be the first topic of discussion as soon
+as we push the above items through to public review, and that can itself
+go up for public review as soon as it's ready.  Likewise for anything else
+after that.  It's up to our judgment to decide how finely to divide things.
+
+== Meeting Technical Discussion
+
+=== Naming Clarifications
+
+* Dan will go through and refine wording like "NAPOT address translation" into
+  something a little more precise.  Feel free to leave comments on the PR
+  to point out any wording or naming you think is unclear.
+
+=== Normative Updates
+
+* Dan will combine the C and V bits in the PTE into a table listing the four
+  combinations as a single "field"
+* There was somewhat of a consensus that for NAPOT translation contiguity,
+  we will only allow the 64KiB option to start with, and we will use the
+  encoding currently listed in the draft.  This gives us the most flexibility
+  to add other sizes in the future, should consensus emerge to add them, while
+  still reserving those bits for other possible uses as well.  Dan will add a
+  table to commentary showing what those encodings would look like, so it's
+  clearer what the intention is.  If there is consensus to add, say, 16KiB in
+  the future, that should be able to happen as a fast track change.
+* Related: future incarnations of Zsn that do have multiple options should
+  allow for each architecturally-available option to be supported or not
+  supported by a given implementation.  It will be up to profiles to decide
+  which (if any) will be required, and which might be forbidden.
+* Also related: the encodings not currently listed in Table 4.5 will be filled
+  in and marked as reserved
+
+=== Commentary Clarifications to Add
+
+* <XLEN writes to the page table are strongly discouraged, as they could
+  lead to the address-translation algorithm (page table walker) picking up a
+  partially-incomplete translation
+* There is no explicit restriction against placing page tables in
+  non-idempotent memory.  We think there is no need to add normative wording
+  to forbid this because the page table walker is only permitted to touch
+  pages which are reachable by executing the address-translation algorithm, so
+  it's under supervisor control.
+
+== Other notes
+
+* Externally, Linux developers are working on support for arbitrary
+  power-of-two translation range support.  That would fit in nicely with our
+  Zsn proposal, and might eventually be a great way to experiment with other
+  intermediate NAPOT sizes and see how beneficial they might be
+
+== Agenda email
+
+....
+Hi everyone,
+
+Apologies in advance for a long email, but there are a lot of important
+new logistics to cover.
+
+
+First, our next meeting will be tomorrow, Nov 12, at 1PM PST.  Zoom info:
+https://lists.riscv.org/g/tech-virt-mem/files/zoom_info.txt
+
+Please note that most of the USA has shifted out of daylight saving time
+since our last meeting, so please make sure to adjust accordingly if
+needed.
+
+The agenda will be to continue discussing our working draft, and the various
+other issues that have come up on the mailing list recently.  I'll also cover
+all of the information in this email.
+
+Note that the next scheduled meeting on Nov 26 is the Thanksgiving holiday
+in the USA, and so we will not have our usual meeting that day.
+
+
+Second, I've moved our working draft from my personal github to here:
+https://github.com/riscv/riscv-isa-manual/tree/virtual-memory
+https://github.com/riscv/riscv-isa-manual/pull/611
+
+I've also populated this new GitHub repo for the task group:
+https://github.com/riscv/virtual-memory
+
+Both of these are being done to shift us into compliance with the new
+documentation and GitHub policies being drafted.
+
+Our draft (also attached) has a few updates since last time, so please take
+a look before tomorrow's meeting if you get a chance, and feel free to
+comment on the PR if you have any questions or feedback, or see anything
+I messed up.
+
+
+Third, the RVI Board of Directors has requested that as a high-priority task
+group, we should prioritize pushing everything that we have ready so far out
+for public review by the end of the year.  Public review is associated with
+the "frozen" state of a spec, where we promise not to make any more changes
+unless public review uncovers some major flaw.  In other words, it gives
+implementers a chance to start building it, writing the OS code to support
+it, etc., knowing that the spec hopefully won't be changing underneath of
+them at that point.
+
+This will require us to do a couple of things:
+
+1) Pick which features make the cut for this round of review.  Given the
+timeline, I'd say the list is essentially what's currently in our working
+draft, not including virtual attributes, since we won't really have time
+to discuss that properly before the end of the year (I'm guessing).
+
+Any features that don't make the cut this time can still go out for review
+as soon as they're ready next year.  This is not a hard cliff for getting
+features developed; just a desire to make forward progress on the features
+that are closer to being ready.
+
+2) Finish the list of items associated with "frozen" in the "Done" policy:
+https://docs.google.com/spreadsheets/d/1UL6F6ahNwFO69fecLJtnpZatx_PkS-Gdcvb8DdWhWUk
+This includes:
+
+* Picking an extension name and letters for NAPOT PTEs
+* Figuring out how to make the existence and sizes of NAPOT PTEs
+  discoverable
+* Decide to stick with draft Priv ISA 1.12, or bump the revision number
+* Come up with a set of test cases
+  * Possibly informally, since I don't know that the compliance TG
+    currently support test cases requiring concurrency, but Allen
+    can correct me if I'm wrong :)
+* Update the formal model and/or Spike (at least one)
+* Anything else I'm missing?
+
+Beyond "frozen", there are more tasks to be completed before ratification.
+Most notably, we'd need at least one and preferably more than one
+HW + SW proof of concept (running on Si, FPGA, QEMU, etc.), to convince
+ourselves and others that the idea is indeed fully viable.  We don't
+have to worry about that now.
+
+
+So that's our roadmap for the next couple of months.  Feel free to
+respond with any questions.  Talk to you all tomorrow.
+
+Dan
+....
