@@ -29,11 +29,11 @@ structures.
 === Changing Translations
 
 ```
-st <PTE address>, <PTE with V=0>
+sd <PTE address>, <PTE with V=0>
 sfence.vma  # optionally with ASID, and/or VA if targeting a leaf PTE
 # send IPIs to other harts, to have them perform sfence.vma and then
 #   sync back using fences and a flag in memory
-st <PTE address>, <new PTE>
+sd <PTE address>, <new PTE>
 ```
 
 This example shows a standard pattern for changing a page table entry.  In
@@ -49,7 +49,7 @@ the "V=0" step can be skipped, and `sfence.vma` can be performed lazily.
 === Swapping Out Pages
 
 ```
-st <PTE address>, <PTE with V=0>
+sd <PTE address>, <PTE with V=0>
 sfence.vma
 # send IPIs to other harts, to have them perform sfence.vma and then
 #   sync back using fences and a flag in memory
@@ -63,6 +63,30 @@ will continue using the old translation.  The `fence` ensures that all
 outstanding accesses to the page are ordered before the triggering of the DMA
 command.  Note that `fence` instructions ordering both I/O and memory will
 generally act as "completion fences" in order for this to work correctly.
+
+=== Ordering Operations' Translations Before Subsequent PTE Updates
+
+```
+sw <address>, <value>
+fence w,w
+sd <PTE for address>
+```
+
+```
+sw <address>, <value>
+sfence.vma  # with rs1 and rs2 such that the accesses are ordered by the sfence
+sd <PTE for address>
+```
+
+These code snippets show two different ways in which software can ensure that a
+particular operation has performed its address translation before a subsequent
+change to the page tables take effect.  The first example uses a `fence w,w`.
+This is valid because the implicit translation reads are ordered before the
+first store, the `fence` orders the two explicit stores, and those orderings
+compose transtively.  The second example uses a `sfence.vma`.  This is valid
+because the `sfence.vma` directly orders the implicit transltion loads for the
+first store before the explicit second store.  Both approaches are equally
+valid.
 
 == Litmus Tests
 
