@@ -53,8 +53,8 @@ sd <PTE address>, <PTE with V=0>
 sfence.vma
 # send IPIs to other harts, to have them perform sfence.vma and then
 #   sync back using fences and a flag in memory
-fence rw,io  # or stronger
-<issue I/O command to start DMA to disk>
+fence rw,rwio  # or stronger
+<issue command to start DMA to disk>
 ```
 
 This example shows a standard pattern for swapping out a page of main memory.
@@ -63,6 +63,10 @@ will continue using the old translation.  The `fence` ensures that all
 outstanding accesses to the page are ordered before the triggering of the DMA
 command.  Note that `fence` instructions ordering both I/O and memory will
 generally act as "completion fences" in order for this to work correctly.
+
+If the command to start the DMA request is known to target either main memory
+or I/O memory, then `fence rw,rw` or `fence rw,io`, respectively, would suffice
+in place of `fence rw,rwio`.
 
 === Ordering Operations' Translations Before Subsequent PTE Updates
 
