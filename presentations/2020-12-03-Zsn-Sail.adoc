@@ -1,0 +1,564 @@
+= Notes on Adding Zsn to Spike and the RISC-V Sail model
+:pdf-theme: 2020-12-03-Zsn-Sail.yml
+:source-highlighter: rouge
+
+Written by Dan Lustig, dlustig@nvidia.com
+(with help from Andrew Waterman on the spike model)
+
+December 2, 2020
+
+This document also available at:
+https://github.com/riscv/virtual-memory/tree/main/presentations/2020-12-03-Zsn-Sail.adoc
+
+== Overview
+
+This document collects some notes I took as I updated the RISC-V ISA simulator
+spike and the RISC-V Sail model to support the Zsn extension being proposed by
+the RISC-V Virtual Memory Task Group.
+
+The English language spec corresponding to these changes is currently located
+at the following GitHub links:
+
+* https://github.com/riscv/riscv-isa-manual/pull/611
+* https://github.com/riscv/riscv-isa-manual/tree/virtual-memory
+* https://github.com/riscv/virtual-memory
+
+== First Impressions of Sail
+
+I hadn't used Sail prior to this experiment, so I'm writing this down to record
+my experience as a first-time user.
+
+I learned OCaml in grad school, and have some experience using Coq, so the Sail
+syntax and the pedantic nature of formal tools wasn't super foreign to me.  I
+can't speak to how accessible this would be to others who don't have that same
+kind of background.
+
+The online instructions were great, and I had little issue installing Sail
+or building the model.
+
+FWIW, I built and ran everything on my Thinkpad laptop using WSL Ubuntu.
+Booting Linux was much slower than the 4 minutes reported on the GitHub page...
+It took more than an hour for me.  I'm guessing that's just because of my use
+of a laptop and WSL more than any actual difference in performance.
+
+All in all, this was a relatively small change to the RISC-V Sail model, but
+it is still an interesting example of an update that isn't about just adding
+a new instruction or CSR.
+
+== Formal Models of Zsn
+
+Before diving into any code, it's worth pointing out that both spike and the
+RISC-V Sail model will only capture a subset of the behaviors permitted by
+the Zsn extension.
+
+Both spike and the Sail model currently support only small, highly-abstracted
+TLBs.  Spike uses a direct-mapped 256 entry TLB, with separate VPN-tagged tags
+for loads, stores, and instruction fetches.  Superpages (and now NAPOT pages)
+are converted into dummy 4KB PTEs before being stored in the TLB.  Per code
+commentary, this TLB exists more for simulator performance than for testing
+purposes (which is sensible).
+
+The RISC-V Sail model models only a single-entry TLB per mode, but it does
+take a bitmask as an argument during creation, so superpages (and now NAPOT
+PTEs) can be stored directly.
+
+Both of these are completely reasonable approaches to take for an ISA simulator
+and for a sequential formal model, respectively.  However, describing the full
+breadth of possible legal executions under Zsn will require a formal
+concurrency model likely living outside of the Sail model itself, as was the
+case for the RVWMO memory model.  (For RVWMO, the Sail model was integrated
+with the `rmem` or `isla-axiomatic` tools, or analyzed with third-party tools
+like `herd` or `Alloy`, as described in Appendix B of the Unprivileged ISA
+spec.)
+
+Note that even within a single hart, the behavior is non-deterministic, just as
+it is in the baseline case for virtual memory, as the spec says:
+
+****
+"A consequence of this specification is that if a leaf PTE is modified but a
+subsuming SFENCE.VMA is not executed, either the old translation or the new
+translation will be used, but the choice is unpredictable. The behavior is
+otherwise well-defined."
+****
+
+What does this all mean?  In practice, an implementation with a real
+production-grade Zsn-aware TLB hierarchy will likely produce behaviors not
+visible under either of these models.  Such is the nature of this type of
+model.
+
+The changes I've made maintain this philosophy: they represent valid
+implementations of Zsn, but do not suffice to enumerate all possible valid
+behaviors under Zsn.
+
+== The diffs themselves
+
+=== Adding the PTE N bit
+
+Adding the N bit to spike was pretty straightforward:
+
+[source,diff]
+----
+--- a/riscv/encoding.h
++++ b/riscv/encoding.h
+@@ -222,6 +222,7 @@
+ #define PTE_A     0x040 /* Accessed */
+ #define PTE_D     0x080 /* Dirty */
+ #define PTE_SOFT  0x300 /* Reserved for Software */
++#define PTE_N     0x4000000000000000 /* Zsn: NAPOT translation contiguity */
+
+ #define PTE_PPN_SHIFT 10
+----
+
+Adding it to the Sail model was a little trickier.  At first I tried adding
+it where the existing bits were:
+
+[source,diff]
+----
+--- a/model/riscv_pte.sail
++++ b/model/riscv_pte.sail
+@@ -19,6 +19,7 @@ type extPte = bits(10)
+ let default_sv32_ext_pte : extPte = zeros()
+
+ bitfield PTE_Bits : pteAttribs = {
++  N : 62,
+   D : 7,
+   A : 6,
+   G : 5,
+----
+
+That gave me this error:
+
+[source]
+----
+$ make
+Type error:
+Makefile:188: recipe for target 'generated_definitions/ocaml/RV64/riscv.ml' failed
+make: *** [generated_definitions/ocaml/RV64/riscv.ml] Error 1
+----
+
+Unfortunately, there was no useful error message.
+
+In spite of the lack of explanation, I realized that `pteAttribs` is only an
+8-bit field, and that `extPte` is what I really should be extending.
+
+[source]
+----
+/* PTE attributes, permission checks and updates */
+
+type pteAttribs = bits(8)
+
+/* Reserved PTE bits could be used by extensions on RV64.  There are
+ * no such available bits on RV32, so these bits will be zeros on RV32.
+ */
+type extPte = bits(10)
+----
+
+(If I had read the Extending Guide in advance, I would have known better...
+https://github.com/rems-project/sail-riscv/blob/master/doc/ExtendingGuide.md)
+
+So I made a new bitfield mirroring `PTE_Bits` for `pteAttribs`, and so
+I added the N bit (and the C bit) there:
+
+[source,diff]
+----
+--- a/model/riscv_pte.sail
++++ b/model/riscv_pte.sail
+@@ -29,6 +29,11 @@ bitfield PTE_Bits : pteAttribs = {
+   V : 0
+ }
+
++bitfield PTE_Ext : extPte = {
++  C : 9,
++  N : 8
++}
++
+ function isPTEPtr(p : pteAttribs, ext : extPte) -> bool = {
+   let a = Mk_PTE_Bits(p);
+   a.R() == 0b0 & a.W() == 0b0 & a.X() == 0b0
+----
+
+=== Implementing Basic Zsn
+
+Adding Zsn to spike was mostly straightforward: get the right PPN, check the N
+bit, and make the appropriate masks and shifts.  Everything is an unsigned 64b
+type `reg_t`, so masking and shifting were straightforward C++ operations.  The
+most relevant subset of the diff (not counting the analogous hypervisor change,
+which is almost identical) is shown below.  Writing the spike model did force
+us to figure out what type of fault needs to be raised in case of invalid use
+of NAPOT pages, which was nice.
+
+[source,diff]
+----
+diff --git a/riscv/mmu.cc b/riscv/mmu.cc
+index fa2cfd1..8e32dfe 100644
+--- a/riscv/mmu.cc
++++ b/riscv/mmu.cc
+@@ -396,7 +404,7 @@ reg_t mmu_t::walk(reg_t addr, access_type type, reg_t mode, bool virt, bool mxr)
+       throw_access_exception(addr, type);
+
+     reg_t pte = vm.ptesize == 4 ? from_target(*(target_endian<uint32_t>*)ppte) : from_target(*(target_endian<uint64_t>*)ppte);
+-    reg_t ppn = pte >> PTE_PPN_SHIFT;
++    reg_t ppn = (pte & ~reg_t(PTE_N)) >> PTE_PPN_SHIFT;
+
+     if (PTE_TABLE(pte)) { // next level of page table
+       base = ppn << PGSHIFT;
+@@ -424,9 +432,16 @@ reg_t mmu_t::walk(reg_t addr, access_type type, reg_t mode, bool virt, bool mxr)
+       if ((pte & ad) != ad)
+         break;
+ #endif
+-      // for superpage mappings, make a fake leaf PTE for the TLB's benefit.
++      // for superpage or Zsn NAPOT mappings, make a fake leaf PTE for the TLB's benefit.
+       reg_t vpn = addr >> PGSHIFT;
+-      reg_t page_base = (ppn | (vpn & ((reg_t(1) << ptshift) - 1))) << PGSHIFT;
++
++      let napot_bits = ((pte & PTE_N) ? (clz(ppn) + 1) : 0);
++      if (((pte & PTE_N) && (ppn == 0 || i != 0)) || (napot_bits != 0 && napot_bits != 4))
++        break;
++
++      reg_t page_base = ((ppn & ~((reg_t(1) << napot_bits) - 1))
++                        | (vpn & ((reg_t(1) << napot_bits) - 1))
++                        | (vpn & ((reg_t(1) << ptshift) - 1))) << PGSHIFT;
+       reg_t phys = page_base | (addr & page_mask);
+       return s2xlate(addr, phys, type, type, virt, mxr) & ~page_mask;
+----
+
+The tricky thing about the Sail version is that it is much stricter and more
+precise about bit widths, in ways that make shifting and masking more tedious.
+
+For example, there were pre-existing comments to make bitmasks of appropriate
+size for checking superpage alignment:
+
+[source]
+----
+/* fixme hack: to get a mask of appropriate size */
+let mask = shiftl(pte.PPNi() ^ pte.PPNi() ^ EXTZ(0b1), level * SV48_LEVEL_BITS) - 1;
+----
+
+The series of xor operations makes a bitvector of size matching `pte.PPNi()`,
+with value 1.  Once that is created, the shift and subtraction are applied as
+would be expected.
+
+Likewise, there doesn't seem to be a bit invert operation for bitvectors (?),
+so I used shifts to form another type of mask:
+
+[source]
+----
+let Zsn_64KB_ppn_part = (pte.PPNi() >> 4) << 4;
+----
+
+Once I figured that out, I was able to adapt existing uses of functions like
+`EXTZ()` to make things all work.
+
+The last non-trivial bit was making sure that the right type of fault is raised
+if NAPOT PTEs are used incorrectly.  In particular, the Sail model returns a
+model-specifig `PTW_Invalid_PTE()` fault type on failure, and it's only in a
+separate file `riscv_ptw.sail` in `translationException` that `PTW_Invalid_PTE`
+is translated into an architectural page fault.
+
+Overall, here is my first diff for Sv48:
+
+[source,diff]
+----
+diff --git a/model/riscv_vmem_sv48.sail b/model/riscv_vmem_sv48.sail
+index 4f2dac5..0e1a62d 100644
+--- a/model/riscv_vmem_sv48.sail
++++ b/model/riscv_vmem_sv48.sail
+@@ -61,6 +61,22 @@ function walk48(vaddr, ac, priv, mxr, do_sum, ptb, level, global, ext_ptw) = {
+                         ^ " ppn=" ^ BitStr(ppn) ^ " res=" ^ BitStr(res)); */
+                   PTW_Success(append(ppn, va.PgOfs()), pte, pte_addr, level, is_global, ext_ptw)
+                 }
++              } else if Mk_PTE_Ext(ext_pte).N() == 0b1 then {
++                /* fixme hacks: to get masks of appropriate size */
++                let Zsn_64KB_mask_ppn_bits = shiftl(pte.PPNi() ^ pte.PPNi() ^ EXTZ(0b1), 4) - 1;
++                let Zsn_64KB_mask_pattern = pte.PPNi() ^ pte.PPNi() ^ EXTZ(0b1000);
++                if (pte.PPNi() & Zsn_64KB_mask_ppn_bits) == Zsn_64KB_mask_pattern then {
++                  /* 64KiB NAPOT PTE */
++                  let Zsn_64KB_ppn_part = (pte.PPNi() >> 4) << 4;
++                  let Zsn_64KB_mask_vpn_bits = shiftl(va.VPNi() ^ va.VPNi() ^ EXTZ(0b1), 4) - 1;
++                  let napot_vpn_part = Zsn_64KB_mask_vpn_bits & va.VPNi();
++                  let napot_ppn = Zsn_64KB_ppn_part | EXTZ(napot_vpn_part);
++/*                let res = append(napot_ppn, va.PgOfs());
++                  print("walk48: NAPOT: pte.ppn=" ^ BitStr(pte.PPNi()) ^ " ppn=" ^ BitStr(pte.PPNi()) ^ " res=" ^ BitStr(res)); */
++                  PTW_Success(append(pte.PPNi(), va.PgOfs()), pte, pte_addr, level, is_global, ext_ptw)
++                } else {
++                  PTW_Failure(PTW_Invalid_PTE(), ext_ptw)
++                }
+               } else {
+                 /* normal leaf PTE */
+ /*              let res = append(pte.PPNi(), va.PgOfs());
+----
+
+There's an identical diff for Sv39 as well.
+
+=== Adapting to Different NAPOT Sizes
+
+It would be cleaner not to hard-code the mask size.  Spike uses a
+"count leading zeros" (`clz`) function to do this, but Sail doesn't have such a
+function (?).  Therefore, I added a manual calculation which has the same
+effect:
+
+[source,diff]
+----
+diff --git a/model/riscv_vmem_sv48.sail b/model/riscv_vmem_sv48.sail
+index 4f2dac5..83b4b44 100644
+--- a/model/riscv_vmem_sv48.sail
++++ b/model/riscv_vmem_sv48.sail
+@@ -1,5 +1,17 @@
+ /* Sv48 address translation for RV64. */
+
++val napot_bits48 : (bits(44), nat) -> nat
++function napot_bits48 (v, n) = {
++  let mask = shiftl(v ^ v ^ EXTZ(0b1), n + 1) - 1;
++  let pattern = shiftl(v ^ v ^ EXTZ(0b1), n);
++  if n > 8 then {
++    0
++  } else if (v & mask) == pattern then {
++    n + 1
++  } else {
++    napot_bits48(v, n + 1)
++  }
++}
++
+ val walk48 : (vaddr48, AccessType(ext_access_type), Privilege, bool, bool, paddr64, nat, bool, ext_ptw) -> PTW_Result(paddr64, SV48_PTE) effect {rmem, rmemt, rreg, escape}
+ function walk48(vaddr, ac, priv, mxr, do_sum, ptb, level, global, ext_ptw) = {
+   let va = Mk_SV48_Vaddr(vaddr);
+----
+
+Now the diff is a little cleaner:
+
+[source,diff]
+----
+diff --git a/model/riscv_vmem_sv48.sail b/model/riscv_vmem_sv48.sail
+index 4f2dac5..0e1a62d 100644
+--- a/model/riscv_vmem_sv48.sail
++++ b/model/riscv_vmem_sv48.sail
+@@ -61,6 +61,22 @@ function walk48(vaddr, ac, priv, mxr, do_sum, ptb, level, global, ext_ptw) = {
+                         ^ " ppn=" ^ BitStr(ppn) ^ " res=" ^ BitStr(res)); */
+                   PTW_Success(append(ppn, va.PgOfs()), pte, pte_addr, level, is_global, ext_ptw)
+                 }
++              } else if Mk_PTE_Ext(ext_pte).N() == 0b1 then {
++                let shift = napot_bits48(pte.PPNi(), 0);
++                if shift == 4 then {
++                  let Zsn_ppn_part = (pte.PPNi() >> shift) << shift;
++                  let Zsn_mask_vpn_bits = shiftl(va.VPNi() ^ va.VPNi() ^ EXTZ(0b1), shift) - 1;
++                  let napot_vpn_part = Zsn_mask_vpn_bits & va.VPNi();
++                  let napot_ppn = Zsn_ppn_part | EXTZ(napot_vpn_part);
++/*                let res = append(napot_ppn, va.PgOfs());
++                  print("walk48: NAPOT: pte.ppn=" ^ BitStr(pte.PPNi()) ^ " ppn=" ^ BitStr(pte.PPNi()) ^ " res=" ^ BitStr(res)); */
++                  PTW_Success(append(pte.PPNi(), va.PgOfs()), pte, pte_addr, level, is_global, ext_ptw)
++                } else {
++                  PTW_Failure(PTW_Invalid_PTE(), ext_ptw)
++                }
+               } else {
+                 /* normal leaf PTE */
+ /*              let res = append(pte.PPNi(), va.PgOfs());
+----
+
+I can see the Sail maintainers having a preference to build an official `clz`
+function in more common file like `prelude.sail`, but I couldn't figure out the
+right incantation to do that myself, so for now I just left these as custom
+functions for Sv39 and Sv48.
+
+=== TLB Masks
+
+The version above is correct, but it treats NAPOT PTEs like 4KB PTEs, in that
+subsequent accesses to other 4KB pages in the same NAPOT region won't hit.
+This is what spike currently does as well.
+
+However, the Sail model already mostly supports masking addresses at any
+specified width during PTE lookup, so it was relatively straightforward to
+extend that masking to support NAPOT PTEs.
+
+First, I changed `make_TLB_Entry` to take the mask bit shift amount as an
+argument:
+
+[source,diff]
+----
+diff --git a/model/riscv_vmem_tlb.sail b/model/riscv_vmem_tlb.sail
+index 5d9831c..70b5ecd 100644
+--- a/model/riscv_vmem_tlb.sail
++++ b/model/riscv_vmem_tlb.sail
+@@ -16,8 +16,7 @@ struct TLB_Entry('asidlen: Int, 'valen: Int, 'palen: Int, 'ptelen: Int) = {
+ val make_TLB_Entry : forall 'asidlen 'valen 'palen 'ptelen, 'valen > 0.
+   (bits('asidlen), bool, bits('valen), bits('palen), bits('ptelen), nat, bits('palen), nat)
+   -> TLB_Entry('asidlen, 'valen, 'palen, 'ptelen) effect {rreg}
+-function make_TLB_Entry(asid, global, vAddr, pAddr, pte, level, pteAddr, levelBitSize) = {
+-  let shift : nat = PAGESIZE_BITS + (level * levelBitSize);
++function make_TLB_Entry(asid, global, vAddr, pAddr, pte, level, pteAddr, shift) = {
+   /* fixme hack: use a better idiom for masks */
+   let vAddrMask  : bits('valen) = shiftl(vAddr ^ vAddr ^ EXTZ(0b1), shift) - 1;
+   let vMatchMask : bits('valen) = ~ (vAddrMask);
+----
+
+Second, I changed the `PTW_Success` data structure to store the appropriate
+shift amount for the matched PTE:
+
+[source,diff]
+----
+diff --git a/model/riscv_vmem_common.sail b/model/riscv_vmem_common.sail
+index 7f1b8eb..fa416be 100644
+--- a/model/riscv_vmem_common.sail
++++ b/model/riscv_vmem_common.sail
+@@ -147,7 +147,7 @@ bitfield SV48_PTE : pte48 = {
+ /* Result of a page-table walk.  */
+
+ union PTW_Result('paddr : Type, 'pte : Type) = {
+-  PTW_Success: ('paddr, 'pte, 'paddr, nat, bool, ext_ptw),
++  PTW_Success: ('paddr, 'pte, 'paddr, nat, bool, ext_ptw, nat),
+   PTW_Failure: (PTW_Error, ext_ptw)
+ }
+
+----
+
+Finally, I propagated the change through the right set of functions (Sv48
+subset shown here):
+
+[source,diff]
+----
+diff --git a/model/riscv_vmem_sv48.sail b/model/riscv_vmem_sv48.sail
+index 4f2dac5..83b4b44 100644
+--- a/model/riscv_vmem_sv48.sail
++++ b/model/riscv_vmem_sv48.sail
+@@ -56,16 +68,30 @@ function walk48(vaddr, ac, priv, mxr, do_sum, ptb, level, global, ext_ptw) = {
+                 } else {
+                   /* add the appropriate bits of the VPN to the superpage PPN */
+                   let ppn = pte.PPNi() | (EXTZ(va.VPNi()) & mask);
++                  let shift : nat = PAGESIZE_BITS + (level * SV48_LEVEL_BITS);
+ /*                let res = append(ppn, va.PgOfs());
+                   print("walk48: using superpage: pte.ppn=" ^ BitStr(pte.PPNi())
+                         ^ " ppn=" ^ BitStr(ppn) ^ " res=" ^ BitStr(res)); */
+-                  PTW_Success(append(ppn, va.PgOfs()), pte, pte_addr, level, is_global, ext_ptw)
++                  PTW_Success(append(ppn, va.PgOfs()), pte, pte_addr, level, is_global, ext_ptw, shift)
++                }
++              } else if Mk_PTE_Ext(ext_pte).N() == 0b1 then {
++                let shift = napot_bits48(pte.PPNi(), 0);
++                if shift == 4 then {
++                  let Zsn_ppn_part = (pte.PPNi() >> shift) << shift;
++                  let Zsn_mask_vpn_bits = shiftl(va.VPNi() ^ va.VPNi() ^ EXTZ(0b1), shift) - 1;
++                  let napot_vpn_part = Zsn_mask_vpn_bits & va.VPNi();
++                  let napot_ppn = Zsn_ppn_part | EXTZ(napot_vpn_part);
++/*                let res = append(napot_ppn, va.PgOfs());
++                  print("walk48: NAPOT: pte.ppn=" ^ BitStr(pte.PPNi()) ^ " ppn=" ^ BitStr(pte.PPNi()) ^ " res=" ^ BitStr(res)); */
++                  PTW_Success(append(pte.PPNi(), va.PgOfs()), pte, pte_addr, level, is_global, ext_ptw, PAGESIZE_BITS + shift)
++                } else {
++                  PTW_Failure(PTW_Invalid_PTE(), ext_ptw)
+                 }
+               } else {
+                 /* normal leaf PTE */
+ /*              let res = append(pte.PPNi(), va.PgOfs());
+                 print("walk48: pte.ppn=" ^ BitStr(pte.PPNi()) ^ " ppn=" ^ BitStr(pte.PPNi()) ^ " res=" ^ BitStr(res)); */
+-                PTW_Success(append(pte.PPNi(), va.PgOfs()), pte, pte_addr, level, is_global, ext_ptw)
++                PTW_Success(append(pte.PPNi(), va.PgOfs()), pte, pte_addr, level, is_global, ext_ptw, PAGESIZE_BITS)
+               }
+             }
+           }
+@@ -89,9 +115,9 @@ function lookup_TLB48(asid, vaddr) =
+     Some(e) => if match_TLB_Entry(e, asid, vaddr) then Some((0, e)) else None()
+   }
+
+-val add_to_TLB48 : (asid64, vaddr48, paddr64, SV48_PTE, paddr64, nat, bool) -> unit effect {wreg, rreg}
+-function add_to_TLB48(asid, vAddr, pAddr, pte, pteAddr, level, global) = {
+-  let ent : TLB48_Entry = make_TLB_Entry(asid, global, vAddr, pAddr, pte.bits(), level, pteAddr, SV48_LEVEL_BITS);
++val add_to_TLB48 : (asid64, vaddr48, paddr64, SV48_PTE, paddr64, nat, bool, nat) -> unit effect {wreg, rreg}
++function add_to_TLB48(asid, vAddr, pAddr, pte, pteAddr, level, global, shift) = {
++  let ent : TLB48_Entry = make_TLB_Entry(asid, global, vAddr, pAddr, pte.bits(), level, pteAddr, shift);
+   tlb48 = Some(ent)
+ }
+
+@@ -113,10 +139,10 @@ val translate48 : (asid64, paddr64, vaddr48, AccessType(ext_access_type), Privil
+ function translate48(asid, ptb, vAddr, ac, priv, mxr, do_sum, level, ext_ptw) = {
+   match walk48(vAddr, ac, priv, mxr, do_sum, ptb, level, false, ext_ptw) {
+     PTW_Failure(f, ext_ptw) => TR_Failure(f, ext_ptw),
+-    PTW_Success(pAddr, pte, pteAddr, level, global, ext_ptw) => {
++    PTW_Success(pAddr, pte, pteAddr, level, global, ext_ptw, shift) => {
+       match update_PTE_Bits(Mk_PTE_Bits(pte.BITS()), ac, pte.Ext()) {
+         None() => {
+-          add_to_TLB48(asid, vAddr, pAddr, pte, pteAddr, level, global);
++          add_to_TLB48(asid, vAddr, pAddr, pte, pteAddr, level, global, shift);
+           TR_Address(pAddr, ext_ptw)
+         },
+         Some(pbits, ext) =>
+@@ -129,7 +155,7 @@ function translate48(asid, ptb, vAddr, ac, priv, mxr, do_sum, level, ext_ptw) =
+            w_pte : SV48_PTE = update_Ext(w_pte, ext);
+             match mem_write_value(EXTZ(pteAddr), 8, w_pte.bits(), false, false, false) {
+               MemValue(_) => {
+-                add_to_TLB48(asid, vAddr, pAddr, w_pte, pteAddr, level, global);
++                add_to_TLB48(asid, vAddr, pAddr, w_pte, pteAddr, level, global, shift);
+                 TR_Address(pAddr, ext_ptw)
+               },
+               MemException(e) => {
+diff --git a/model/riscv_vmem_tlb.sail b/model/riscv_vmem_tlb.sail
+index 5d9831c..70b5ecd 100644
+--- a/model/riscv_vmem_tlb.sail
++++ b/model/riscv_vmem_tlb.sail
+@@ -16,8 +16,7 @@ struct TLB_Entry('asidlen: Int, 'valen: Int, 'palen: Int, 'ptelen: Int) = {
+ val make_TLB_Entry : forall 'asidlen 'valen 'palen 'ptelen, 'valen > 0.
+   (bits('asidlen), bool, bits('valen), bits('palen), bits('ptelen), nat, bits('palen), nat)
+   -> TLB_Entry('asidlen, 'valen, 'palen, 'ptelen) effect {rreg}
+-function make_TLB_Entry(asid, global, vAddr, pAddr, pte, level, pteAddr, levelBitSize) = {
+-  let shift : nat = PAGESIZE_BITS + (level * levelBitSize);
++function make_TLB_Entry(asid, global, vAddr, pAddr, pte, level, pteAddr, shift) = {
+   /* fixme hack: use a better idiom for masks */
+   let vAddrMask  : bits('valen) = shiftl(vAddr ^ vAddr ^ EXTZ(0b1), shift) - 1;
+   let vMatchMask : bits('valen) = ~ (vAddrMask);
+----
+
+== Other Coding Notes
+
+At one point I wrote the following diff:
+
+[source,diff]
+----
+diff --git a/model/riscv_vmem_sv32.sail b/model/riscv_vmem_sv32.sail
+index 1b19679..b87a3aa 100644
+--- a/model/riscv_vmem_sv32.sail
++++ b/model/riscv_vmem_sv32.sail
+@@ -95,9 +96,9 @@ function lookup_TLB32(asid, vaddr) =
+     Some(e) => if match_TLB_Entry(e, asid, vaddr) then Some((0, e)) else None()
+   }
+
+-val add_to_TLB32 : (asid32, vaddr32, paddr32, SV32_PTE, paddr32, nat, bool) -> unit effect {wreg, rreg}
+-function add_to_TLB32(asid, vAddr, pAddr, pte, pteAddr, level, global) = {
+-  let ent : TLB32_Entry = make_TLB_Entry(asid, global, vAddr, pAddr, pte.bits(), level, pteAddr, SV32_LEVEL_BITS);
++val add_to_TLB32 : (asid32, vaddr32, paddr32, SV32_PTE, paddr32, nat, bool, shift) -> unit effect {wreg, rreg}
++function add_to_TLB32(asid, vAddr, pAddr, pte, pteAddr, level, global, shift) = {
++  let ent : TLB32_Entry = make_TLB_Entry(asid, global, vAddr, pAddr, pte.bits(), level, pteAddr, shift);
+   tlb32 = Some(ent)
+ }
+----
+
+Note the use of `shift` as a type.  Weirdly, Sail didn't complain about this;
+it built the model and booted Linux.  I caught it only after the fact as I was
+writing up this document.  Changing that to `nat` also didn't trigger a rebuild
+of anything at all.  I would have expected an error when using `shift` as a
+type, and changing it to trigger a rebuild.  Maybe this is a Sail bug of some
+kind?
+
+== Testing
+
+The virtual memory task group doesn't have a test suite yet, so I haven't
+actually tested the new functionality.  It's certainly possible there are bugs,
+off-by-one mistakes, etc.  I did at least boot the linux image available in the
+sail-riscv repo to make sure I didn't break the baseline behavior.
+
+== Other Comments
+
+The overall structure of the Sail version is a little different than the spike
+version.  Spike largely duplicates the address translation algorithm for
+supervisor and for hypervisor mode, to account for the subtle differences, but
+reuses the same code for Sv32, Sv39, and Sv48.  The Sail model does not yet
+support the hypervisor extension, and duplicates the translation algorithm for
+Sv32, Sv39, and Sv48.
+
+`diff model/riscv_vmem_sv39.diff model/riscv_vmem_sv48.diff` shows that the two
+algorithms are basically identical, except that the Sv48 model currently
+doesn't actually check the one-entry TLB when doing lookups.  A unified model
+codebase at least for Sv39, Sv48, and (probably soon) Sv57 might be a better
+approach in the long run, for maintainability.
+
+The spike code should work even if we allow NAPOT superpages in the future.
+The Sail model would take a bit more refactoring to allow that.  It's not
+a big deal at this point, but I'll still mention it here.
+
+Finally, this is my first attempt to write Sail, so if any experts would like
+to critique the code or correct any mistakes, I would welcome the feedback.
