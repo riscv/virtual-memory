@@ -1,0 +1,44 @@
+= Minutes for 2021-01-07
+
+Questions/comments/follow-up discussion welcome as always
+
+The meeting was mostly focused on recapping the state of the current Zsn spec
+draft and what is left before we move to public review.
+
+The current state of the task group is generally recorded here:
+https://github.com/riscv/virtual-memory
+
+== Zsn spec updates
+
+We made one recent commit with some cosmetic changes, and a clarification to
+when address translations are able to begin: when the "effective privilege
+mode" is U or S (e.g., directly, or via MPRV), and analogously for hypervisor
+modes.  Translations need not terminate when the mode is no longer active, but
+translations may only begin when satp is active.  In other words, changing
+satp while in M mode has no effect from a translation caching perspective
+until leaving M mode or setting MPRV.  On the other hand, if M mode changes
+satp then uses MPRV to access memory, for example, then it must be aware that
+any reachable PTE can now be cached in the address-translation cache.
+
+Aside from that, the spec has been pretty stable for a while now.  If you
+haven't read the spec update in detail yet, please do so soon, since it will
+be going public hopefully pretty soon.
+
+https://github.com/riscv/riscv-isa-manual/pull/611
+
+== Public review logistics
+
+Very soon I will be filling out a copy of this spreadsheet for Zsn:
+https://docs.google.com/spreadsheets/d/1UL6F6ahNwFO69fecLJtnpZatx_PkS-Gdcvb8DdWhWUk
+
+The specification is coming together, and is on the opcode and consistency
+review to-do list.  We have spike support merged, and a pull request for
+the Sail model.  We have a small list of test cases on our github page, and
+will do what we can to port to the architecture test infrastructure, but that
+infrastructure isn't really ready to handle all of the types of concurrency
+and non-determinism that testing virtual memory properly would require.  So
+most likely we'll ask for an exception there.
+
+Beyond freeze, there is other work to be done, such as building at least one
+implementation, adding support in QEMU, and getting a complete working OS
+that actually uses NAPOT PTEs.  We'll worry about that down the line.
