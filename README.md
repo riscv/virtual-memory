@@ -26,13 +26,14 @@ Ingle, Ajay.Ingle@wdc.com.
 
 # Task Group Status
 
-## Zsn extension
+## Svnapot extension
 
 ### Progress towards Stable status
 Aiming to complete by end of 2020
 
 * Spec: written, pull request created, reviewed but not merged:
-  https://github.com/riscv/riscv-isa-manual/pull/611
+  https://github.com/riscv/riscv-isa-manual/pull/611.
+  Snapshots available at https://github.com/riscv/virtual-memory/tree/main/specs.
 * Spike update: [merged](https://github.com/riscv/riscv-isa-sim/commit/fce242a5d495db731eee6571916399d10ec531e9)
 * Sail formal model: pull request, not reviewed or merged: https://github.com/rems-project/sail-riscv/pull/79
 * Tests: currently written only in prose form: [tests.adoc](tests.adoc)
