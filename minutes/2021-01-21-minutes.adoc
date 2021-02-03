@@ -1,0 +1,40 @@
+= Minutes for 2021-01-21
+
+Questions/comments/follow-up discussion welcome as always
+
+The meeting focused on how to write architecture tests for Zsn in particular,
+and for extensions/features with non-deterministic behavior in general.
+
+This situation is not unique to Zsn or even to concurrency.  Other examples
+include:
+
+* Misaligned accesses can trap, or perform, or even go back and forth
+* Store-conditional accesses can succeed or fail spuriously
+* ...etc.
+
+Other thoughts:
+
+* There were questions about how to test microarchitecture features like the
+  TLB as a matter of architecture tests.  The architecturally-legal outcomes
+  must be defined in a way that does not refer to implementation detail.
+
+* There are open questions about the legality of trap-and-emulate in M mode
+  during testing.  Trapping to S-mode or M-mode to handle A/D bit updates
+  would be a relevant instance for this task group.
+
+* Ultimately the formal model (plus concurrency model, if applicable) will
+  have to be the arbiter
+
+* The meaning of test coverage is unclear.  It's not like simpler
+  one-instruction tests just enumerating inputs and/or instructions
+
+* The architecture tests are *not* meant to provide 100% verification for an
+  implementation.  They are meant to be a set of basic tests that serve as
+  the means by which a RISC-V implementation can be officially certified as
+  RISC-V compliant.  Verification is up to each implementer to perform.
+
+* We'll add an S-mode trap handler to the architecture test framework.  Fault
+  reasons aren't super precise, but we'll see what we can handle in order to
+  make the architecture tests work.
+
+Much of this is an ongoing discussion within the architecture test TG.
