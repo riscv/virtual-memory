@@ -1,0 +1,65 @@
+= Minutes for 2021-02-04
+
+Questions/comments/follow-up discussion welcome as always
+
+== SFENCE.VMA Pattern
+
+We chose to commit the discussion on multi-SFENCE.VMA scenarios into the spec
+text rather than into the appendix, since it would be consistent with other
+instances in the spec of instruction sequences used for microarchitectural
+pattern matching.  We can always reorganize later if needed.
+
+== Sv57
+
+After the proposal sent out earlier this week, there was interest in doing both
+Sv57 and the user/kernel split, but as independent orthogonal extensions.
+
+We will move forward with Sv57 in the form of the natural extension of Sv39
+and Sv48 to one more level of page table as a fast-track extension.  It will
+have the same number of physical address bits as Sv48.  Any change that we'd
+do to the physical address would be a separate change (that might also affect
+extensions beyond Sv57).
+
+I will try to draft Sv57 and send it out (unless someone else wants to
+volunteer), and then we can work through the fast-track version of the "done"
+checklist, e.g., update Spike and other basic infrastructure.
+
+There may be interest in Sv64 too, but we'll take it one step at a time.
+
+== User/Kernel satp Split
+
+Then, separately, we can add the user/kernel split proposal that was called
+"K" in the Sv57K earlier this week (actual extension name TBD).  This
+would work as follows:
+* satp would split into two registers: one for virtual addresses with the
+  top bit equal to 0 (generally user code) and one for virtual addresses
+  with the top bit equal to 1 (generally kernel code).
+* The format of the satp registers would match the existing satp format
+  (unlike in the Sv57K proposal).  There wasn't a clearly demonstrated
+  need for more ASID bits, and even if there were, that could also be
+  decoupled into a separate proposal.  (Note that OS proc IDs are not the
+  same as architectural ASIDs.  There is a mapping from the former to the
+  latter...currently only a per-hart local mapping, but potentially a
+  global one later, per commentary already in the spec).
+* The ASID space for the user and the kernel satp registers could be made
+  either unified or independent.  We should think through this and the
+  implications for SFENCE.VMA
+* The format of the page table entries would not change either (including
+  the G bit)
+* This could be applied to any of the existing or proposed modes: Sv32, Sv39,
+  Sv48, Sv57.  In principle the two satp registers could even enter different
+  modes (e.g., one Sv48 and one Sv57), although OSes might not support it in
+  practice
+* We need to think through the impliciations for the hypervisor spec and its
+  two-stage translation process
+* If we agree on the basics, the security standing committee and/or TEE TG
+  should get a chance to weigh in before we finalize the proposal
+
+Note that this one small step doesn't preclude adding other security-targeted
+features in the future, if appropriate.
+
+== Litmus Tests
+
+We didn't have time to talk about litmus tests or memory ordering, but the
+link is here if anyone wants to check it out:
+https://github.com/daniellustig/riscv_axiomatic
