@@ -1,0 +1,78 @@
+= Minutes for 2021-02-18
+
+Questions/comments/follow-up discussion welcome as always
+
+== Reorganizing specs
+
+I will reorganize our efforts into the following standalone pull requests:
+
+1. Assorted priv spec updates, including:
+  * Sv57
+  * PTE C bit for Sv39/48/57
+  * Other assorted refactoring and minor changes
+  * (all to be reviewed as part of priv 1.12)
+2. Svnapot
+3. Svattr (virtual memory attributes), once we're ready to draft it
+4. SINVAL.VMA, once we're ready to draft it
+5. Separate user and kernel page tables, once we're ready to draft it
+6. ...etc
+
+This better decouples orthogonal changes from each other.  I'll send
+out new github links when 1 and 2 are ready.
+
+== Separate User/Kernel Page Tables
+
+We had a brief discussion about this.  Most salient is probably just
+acknowledging that there is a design space still to be explored here.  For
+example, the standard approach of simply sign-extending a Sv39/48/57 virtual
+address to 64b isn't directly compatible with using the top bit to indicate
+user vs. kernel addresses.  We'd also have to sort out compatibility with
+active pointer masking proposals.   The bit could potentially come from a mode
+register of some kind instead, or elsewhere.  That's the type of detail to sort
+out for the next phase of this proposal.
+
+== SFENCE.VMA with bogus address
+
+It is defined to be legal for SFENCE.VMA to ignore _rs1_ and simply behave as
+if _rs1_=*x0*.  This implies that SFENCE.VMA with a bogus virtual address in
+_rs1_ should not trap, and should just be ignored.  I will add commentary
+clarifying this as I refactor the spec text in our PR.
+
+== Multiple SFENCE.VMAs, and SINVAL.VMA Proposal
+
+We discussed the SINVAL.VMA proposal.  There was general support for the
+idea, but details like encoding(s) have to be worked out.
+
+There is still a question about choosing between N-1 SINVAL.VMAs followed by a
+SFENCE.VMA, or N SINVAL.VMAs followed by a completion fence.  No super strong
+argument emerged to break this tie, but we discussed the following:
+
+* Other aspects of RISC-V might use a completion fence (e.g., I/D consistency
+  probably will, CMOs have discussed it but might not right away)
+
+* The SFENCE.VMA approach might be cleaner from some points of view
+
+* The mstatus register has a TVM (trap virtual memory) bit which declares that
+  accesses to satp and execution of SFENCE.VMA must trap, to support things
+  like shadow page tables.  Since these new instructions would have to trap
+  too, and it's N vs. N+1 instructions, the completion fence scenario imposes
+  one extra trap. Or, the trap of an SINVAL.VMA could implicitly perform the
+  necessary ordering too, in which case the completion fence could possibly not
+  trap.
+
+* It might help in cases like that for the OS to be able to control the
+  cutoff between issuing a series of individual SFENCE.VMA or SINVAL.VMA ops
+  vs. just issuing a single SFENCE.VMA with _rs1_=*x0*.
+
+* The first approach generally wouldn't preclude later adding the second, if
+  one day the use case for completion fences in this context becomes clearer
+
+* Even with the SINVAL.VMA proposal, SFENCE.VMA will still likely be useful
+  when invalidating just a single page.  No need for two instructions in that
+  case.
+
+* Composability was a question, e.g., say a user wants to invalidate two
+  different ranges.  Would the routine to invalidate each range end with an
+  SFENCE.VMA or completion fence?  Or could the user issue two separate
+  rounds of SINVAL.VMAs and then issue a SFENCE.VMA (possibly with dummy
+  address) or completion fence separately at the end?
