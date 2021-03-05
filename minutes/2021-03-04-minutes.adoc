@@ -1,0 +1,77 @@
+= Minutes for 2021-03-04
+
+Questions/comments/follow-up discussion welcome as always
+
+== SINVAL.VMA and SINVALFENCE proposal
+
+We recapped Greg's proposal on the mailing list.  The general conclusion is
+that there was support for the variant with two separate SINVALFENCE
+instructions, since on some implementations one will likely be cheaper than the
+other, but it seems people also need some time to keep digesting the details.
+
+Other notes:
+
+* It's hard/impossible to really quantify the impact, because it will vary
+  heavily by implementation style and use case, but based on experience
+  there is a sense it will be a net win for many implementation styles
+* There is room to encode all the instructions we'd need.  We obviously
+  don't ever want to waste encoding space, but in this particular case it
+  doesn't seem to be a first-order concern
+* We are not proposing global TLB invalidate instructions at this time,
+  but we will think through whether that would have any implications on
+  this proposal, just in case that comes up in the future
+* We will also think through the implications on hypervisor mode use of
+  these instructions, or HFENCE etc. equivalents.  These will be added
+  in more detail in the next iteration of the proposal
+
+== Trapping user accesses to kernel space
+
+We discussed Steve's Sv57k proposal, and ultimately narrowed it down to
+the following sub-proposal:
+
+Add a new CSR mode bit (name TBD...see notes below) that works as follows:
+
+When <mode bit> is set, non-speculative accesses from user mode to virtual
+addresses with the most significant bit equal to 1 must trigger a page-fault
+exception before the address-translation process is started, without otherwise
+affecting microarchitectural state.  Speculative accesses or prefetches to such
+addresses must also terminate before starting the address-translation process
+and without affecting microarchitectural state.  This prevents certain classes
+of speculation-based microarchitectural side-channel attacks.
+
+(Note: this brings the notion of microarchitectural state into the
+architectural definition, which seems weird, but also seems to be an inherent
+requirement of the proposal as a means of preventing side-channel attacks.  If
+anyone wants to suggest an alternative phrasing, please feel free.)
+
+This mode would provide architectural enforcement of what is now simply a
+software convention to split the virtual address space in half for user vs.
+kernel.
+
+In terms of how to move forward: there is still some skepticism about whether
+this is a useful security feature in the first place, so the next step for this
+proposal should be to get consensus from the security TG that it is in fact
+valuable to add.
+
+Other notes:
+
+* Using the mode's MSB (bit 38/47/56) instead of bit 63 is equivalent in the
+  base architecture for well-formed VAs sign-extended to 64 bits, but helps
+  avoid conflict with in-flight pointer masking proposals that reuse the upper
+  bits for masks.
+* It probably makes sense to add this to the mstatus CSR for Rv64 only.  As was
+  pointed out during the meeting, 32b OSes don't always use a 2GB:2GB split
+  between user and kernel space, so this feature would seem less useful on
+  Rv32.
+* The proposal could also be tied into sstatus.SUM, to say that supervisor-mode
+  accesses to VAs with MSB==0 should also trap in the same manner.
+* Again, we should think through the hypervisor implications if we go ahead
+  with this proposal.
+
+== ASID bits
+
+We briefly discussed whether there is a need for more ASID bits in the address
+translation process.  There was pushback against the idea that more bits are
+needed, because a) ASID bits are hart-local on RISC-V (at least today), so the
+total ASID space scales with hart count, and b) the VMID bits in the hypervisor
+mode hgatp register already extend the ASID space.
