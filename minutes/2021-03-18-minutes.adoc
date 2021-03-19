@@ -1,0 +1,75 @@
+= Minutes for 2021-03-18
+
+Questions/comments/follow-up discussion welcome as always
+
+= Testing
+
+We brainstormed about various topics related to testing of virtual memory
+features, and testing of non-deterministic architectural behavior in general.
+Notes in no particular order:
+
+* RISC-V International is aiming to develop architecture tests, with a goal of
+  testing architecturally-visible state.  It is explicitly not a goal to
+  perform or facilitate complete formal verification, nor to do anything that
+  is implementation-specific, nor assumes the existence or ability to modify
+  RTL, etc.  The test needs to be minimally invasive; currently only a small
+  number of "hooks" are used to set up and run tests.  There is no OS; the
+  tests run bare-metal.
+
+* There are architecturally-visible behaviors that are non-deterministic, e.g.,
+  if a page table entry is modified, but an SFENCE.VMA is not issued to
+  synchronize it, then subsequent translations may use either the old or the
+  new PTE, but nothing else.  There was some debate about whether scenarios
+  like this should be tested at all, but in the end (I think) we were leaning
+  towards including this, as it is still architecturally-specified behavior.
+
+* NAPOT PTEs can be tested by trying to access memory and checking that it
+  either uses the normal PTE associated with that 4KB chunk, or any NAPOT PTE
+  in the same 64KB region, but nothing else.  For example.  (If the former is
+  invalid, a page fault is the expected behavior.)  Likewise, we can test that
+  invalid NAPOT PTEs trigger page faults.
+
+* Situations with undefined behavior (if any?) wouldn't be tested at all, but
+  that should be rare.
+
+* Ultimately, hopefully, the Sail formal model will become the authoritative
+  source of architecturally valid behavior in all cases (including concurrency,
+  virtual memory synchronization, I/D synchronization, etc.), but there's
+  work to be done to make that happen
+
+* We can't directly test for non-architectural state, although in some cases we
+  can infer the presence of certain features (e.g., TLBs) from observation of
+  architectural state
+
+* No implementation is required to produce all possible legal outcomes in a
+  given scenario, e.g., simulators with minimal-to-no TLB hierarchy won't
+  produce many relaxed virtual memory behaviors.  This is fine.  It is only
+  required that all execution outcomes are legal, not that all legal outcomes
+  are observed.  It is not required (and probably not practical) to explicitly
+  check that no illegal outcomes are observed.
+
+* Certain behaviors may also be hard to induce, e.g., paths taken only in
+  rare situations.  There's not much an implementation-independent testing
+  infrastructure can do about this besides applying forms of stress (e.g.,
+  doing other things in the background) and hoping that induces more coverage.
+  This is even harder when the test is running bare-metal.  Ultimately,
+  this may simply be declared out of scope for this testing suite.
+
+* There isn't an obvious good metric for coverage in scenarios like these
+
+* It may be possible to build forms of "self-checking" tests, using extra
+  harts on some types of system.  This hasn't been the RISC-V test strategy
+  so far, but it may be useful in the future.
+
+* It does seem possible to build a tool to enumerate all possible legal
+  signatures for small virtual memory-aware litmus tests, as I (Dan)
+  prototyped earlier: https://github.com/daniellustig/riscv_axiomatic
+  However, the current RISC-V test infrastructure isn't yet set up to
+  support multiple signatures.
+
+* The test infrastructure right now doesn't support multiple harts, but
+  the testing SIG is brainstorming about how to support that in the future.
+
+* In the meantime, as a group, we can try to come up with a set of prototype
+  tests, to help the test infrastructure TG figure out what they need to do
+  in order to support them.
