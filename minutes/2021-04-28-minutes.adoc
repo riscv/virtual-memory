@@ -1,0 +1,45 @@
+= Minutes for 2021-04-28
+
+Questions/comments/follow-up discussion welcome as always
+
+= Testing
+
+Bill McSpadden presented slides and led a discussion on testing of memory
+ordering and virtual memory [1]
+
+* For now, the general plan overall is that single-threaded semantics will
+  be analyzed within the RISC-V Sail model, while anything relating to weak
+  memory behavior is analyzed using a concurrency-aware extension to the
+  Sail model.  For testing, we will do the best we can.  The goal is to
+  come up with a set of architecture tests, not to perform full verification.
+  Full verification is left to individual vendors.
+
+* There are multiple complementary approaches.  Bill focused on a test
+  application with a series of semaphores, buffers, and message passing,
+  along with self-checking results.  The buffers can be placed at different
+  locations in memory to stress the address translation system.  Various
+  different types of semaphore can be used (down to Peterson's algorithm),
+  assuming the right types of fences are used.  This should also check for
+  deadlock.  Can stress even further with misaligned buffers etc.
+
+* An interesting twist would be using the page tables themselves as the
+  buffers in one of these experiments.
+
+* Another approach is to use memory model litmus tests [2], using a tool
+  like litmus [3].  These are much smaller in scope, but test a much
+  wider range of patterns beyond simple message passing.  These also have
+  patterns both with and without fences.  These litmus tests have well-defined
+  behavior in all cases, and therefore should all be tested even if no fences
+  are present.
+
+* Note: the litmus flow requires an operating system, but in general we'll want
+  many/most architecture tests to run bare metal.  e.g., RTL testing often
+  can't run an OS.  TBD how RISC-V will resolve this in general.
+
+* Interrupt ordering wrt fences is an open question, or at least we need to
+  write something down.  The RISC-V advanced interrupt architecture (AIA)
+  group would be a good place to sync on this.
+
+[1] https://github.com/riscv/virtual-memory/tree/main/presentations/2021-04-28-MultiAgentMultiResourceVerif.pdf
+[2] https://github.com/litmus-tests/litmus-tests-riscv/
+[3] http://diy.inria.fr/doc/litmus.html
