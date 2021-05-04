@@ -21,8 +21,8 @@ privileged ISA specification.
 # Maintainers
 
 The repository is currently being maintained by the chair and vice-chair of
-the virtual memory task group: Daniel Lustig, dlustig@nvidia.com, and Ajay
-Ingle, Ajay.Ingle@wdc.com.
+the virtual memory task group: Daniel Lustig (dlustig@nvidia.com), and Andrea
+Mondelli (andrea.mondelli@huawei.com)
 
 # Task Group Status
 
