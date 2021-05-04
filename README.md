@@ -66,4 +66,8 @@ Proposed to be added, and expected to be fast-tracked as well
 
 ## Zsa Virtual Address Attributes
 In progress, with active discussion in the task group, but no spec yet ready
-for review.  Hoping to get here by early 2021.
+for review.  A new proposal is under discussion, including:
+
+* attributes definition
+* rationale
+* interaction with PMA
