@@ -4,33 +4,23 @@ Questions/comments/follow-up discussion welcome as always
 
 = Page-Based Memory Types (PBMA) Proposal 
 
-A summary of the Page-Based Memory Types proposal submitted to the mailing list by Greg[1] was provided. The short presentation covered the topics addressed in the proposal in a way that allowed the participants to get an overview of the mechanics introduced in the proposal and the direction of the discussion.
+A summary of the Page-Based Memory Types (PBMA) proposal [1] submitted to the mailing list was provided. The short presentation covered the topics addressed in the proposal in a way that allowed the participants to get an overview of the mechanics introduced in the proposal and the direction of the discussion.
 
-* Some details of the proposal were discussed, and there were no specific objections to the proposal.
-
-* Participants expressed interest in following the updates of the proposal and participating in the discussion on the mailing list.
-
-* Participants shared an interest in supporting the introduction of Page Based Attributes in RISC-V, which was followed by a brief discussion of possible uses. 
-
-* It is necessary to prepare a list of memory attributes divided by tier, in order to identify the specific use cases, the target environment (server, embedded, etc). This list is not defined in literature and will require input from members based on their own experience. 
-
-* An initial consensus emerged towards the use of two bits for attributes, in order to limit the consumption of precious bits in the Page Table Entry (PTE). This solution does not allow the same number of attributes to be covered as provided by other architectures. It will be necessary to understand which of these attributes can favour the RISC-V architecture in the high performance and server context.
+* Some details of the proposal were discussed, and there were no specific objections to the proposal
+* Participants expressed interest in following the updates of the proposal and participating in the discussion on the mailing list
+* Participants shared an interest in supporting the introduction of Page Based Attributes in RISC-V, which was followed by a brief discussion of possible uses
+* It is necessary to prepare a list of memory attributes divided by tier, in order to identify the specific use cases, the target environment (server, embedded, etc). This list is not defined in literature and will require input from members based on their own experience
+* An initial consensus emerged towards the use of two bits for attributes, in order to limit the consumption of precious bits in the Page Table Entry (PTE). This solution does not allow the same number of attributes to be covered as provided by other architectures. It will be necessary to understand which of these attributes can favour the RISC-V architecture in the high performance and server context
 
 = Description and use of "C" bit
 
 The discussion focused on a summary of the problem described and analysed recently on the mailing list [2] regarding the use of the "C" bit. 
 
-* Following Daniel's update of the manual draft, the discussion in ML shifted to the usefulness of having the custom bit or replacing/removing it.
-
-* John described the current use of the "C" bit. 
-
-* The current consensus is to keep the "C" bit as described in the manual draft, but no final decision has been made on this.
-
-* The use of the "C" bit is also related to the need to reduce the number of PTE bits used and to find the right trade-off between bits used and bits available to the implementer. A further element of discussion, regarding this trade-off, is that of encouraging the use of a custom mode in the case where the implementer wishes to integrate functionality into the PTE that is not currently implemented and has no place in the current structure. This discussion was tied to the discussion about page based attributes.
-
-* There was a mention of the need to consider, as a next step in the discussion, a concrete analysis of the future direction of RISC-V with respect to the use of a 128-bit page table entry.
-
-* The use of a 128-bit Page Table Entry is not considered a priority at present, but the discussion showed interest in this solution for the future. This solution raises new issues, mainly related to the possible physical implementation as well as to the support from the operating system, which will be formalised in the future on the mailing list for discussion.
+* Following Daniel's update of the manual draft, the discussion in ML shifted to the usefulness of having the custom bit or replacing/removing it
+* The current discussion is about whether or not to keep the "C" bit as described in the manual draft, but no final decision has been made 
+* The use of the "C" bit is also related to the need to reduce the number of PTE bits used and to find the right trade-off between bits used and bits available to the implementer. A further element of discussion, regarding this trade-off, is that of encouraging the use of a custom mode in the case where the implementer wishes to integrate functionality into the PTE that is not currently implemented and has no place in the current structure. This discussion was tied to the discussion about page based attributes
+* There was a mention of the need to consider, as a next step in the discussion, a concrete analysis of the future direction of RISC-V with respect to the use of a 128-bit page table entry
+* The use of a 128-bit Page Table Entry is not considered a priority at present, but the discussion showed interest in this solution for the future. This solution raises new issues, mainly related to the possible physical implementation as well as to the support from the operating system, which will be formalised in the future on the mailing list for discussion
 
 [1] https://lists.riscv.org/g/tech-virt-mem/message/1266
 
