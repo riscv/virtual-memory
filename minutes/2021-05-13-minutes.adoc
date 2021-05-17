@@ -1,0 +1,49 @@
+= Minutes for 2021-05-13
+
+Questions/comments/corrections/follow-up discussion welcome as always
+
+== Proof-of-Concept Status Update
+
+Our development partners at ICT/CAS gave us an update on their status building
+proofs of concept for the various new features we have been developing in the
+virtual memory TG.
+
+The full set of slides is available here:
+https://github.com/riscv/virtual-memory/blob/main/presentations/2021-05-13-PoC-Status.pdf
+
+A brief summary of the discussion is included below.
+
+=== Sv57
+
+* Implemented in NutShell and NEMU
+** https://github.com/OSCPU/NutShell
+** https://github.com/Ziyue-Zhang/nemu-rv64
+* Verified with some basic hand-written tests
+* In-progress Linux port extends patches previously posted on Linux kernel
+  mailing list
+
+=== Svnapot
+
+* Also developed within NutShell and NEMU
+** https://github.com/happy-lx/NutShell
+** https://github.com/happy-lx/nemu
+* Verified with some simple test cases, including CoreMark and Dhrystone, with
+  some perf improvement observed
+* TLB notes:
+** Fully-associative TLBs can handle the extra NAPOT size(s) easily
+** For set-associative TLBs, lookups must check one (or more) extra hash(es),
+   one for each new page size (currently just 64KiB)
+** For separate per-page-size TLBs, NAPOT requires a new SRAM == more area
+* In-progress Linux implementation
+** support via MAP_HUGE_64KB flag passed to mmap call for anonymous pages
+** No transparent 64KiB page support yet
+** fork and copy-on-write in progress, swap and file-backed pages to come
+
+=== Other new features
+
+(Note: references to "Zsa" in this document refer to this section.)
+
+* "LR/SC"-style A/D bit update implemented in Rocket, now debugging
+* Also explored HW-maintained coherency between TLBs and memory after A/D bit
+  updates performed by HW page table walker
+** Not required by spec
