@@ -1,0 +1,51 @@
+= Minutes for 2021-05-26
+
+Questions/comments/corrections/follow-up discussion welcome as always
+
+== Page-Based Memory Types (PBMT)
+
+We spent the meeting discussing the updated PBMT proposal that Greg sent out
+before the meeting.
+
+* Linux is actively looking for a standard solution here, as at least one
+  vendor has sent patches attempting to build a custom solution for
+  indicating cacheability within PTEs, so this is an important proposal for
+  us to work on
+* The goal is to get a basic proposal along the lines of the current draft
+  working.  We'd rather have a working basic proposal sooner than a large
+  complicated extension that takes forever to develop.  Any other bells
+  and whistles could be proposed for future extensions.  That could include:
+** a third bit for more mode
+** some form of indirection table
+* We'd like to use the name "memory types" for the categories in the proposal,
+  so that we don't introduce confusion with the set of attributes that PMAs
+  make available
+* Clarification: PMAs are intended to rarely change (or never change at
+  all), as they are intented to represent inherent properties of the
+  physical memory in that range.  PMAs are also only accessible to M-mode.
+  PBMTs, on the other hand, are designed to be modifiable by S-mode.
+
+=== To-Do
+
+* Choose a name, probably "Sv<something>", but not "Svattr" since we're
+  not calling these attributes
+* Clarify the behavior when there are memory type mismatches between two
+  different virtual attributes
+* Clarify/verify how M-mode accesses using only PMAs interact with
+  U/S-mode accesses mixing the PMAs and PBMTs, e.g., where PMAs might
+  allow speculation but PMBTs might not
+* Clarify how each combination of PMAs translates to the "PMA memory
+  type" described in the draft, and what happens for combinations that
+  don't map cleanly into any of the currently listed options
+* Document the use case(s) for WB+ as commentary in the spec, and make
+  sure it's worth consuming the "11" encoding for this
+* Get a better sense for what Linux does/needs and make sure what we're
+  proposing meets those needs.  Same for other OSes that might need this.
+  e.g., if OSes sometimes do something conservative due to not having
+  enough PMAs, PBMTs could give a more flexible approach
+* Also, make sure "00" is a safe default fallback, since that's what
+  OSes unaware of the feature would implicitly use for those bits
+  (i.e., default results in just using PMAs)
+* Work towards converting this all into a spec draft (probably latex...
+  even though RISC-V is slowly shifting to asciidoc for its specs, the
+  priv spec will probably not be translated until the user spec is done)
