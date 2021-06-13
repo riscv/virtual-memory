@@ -1,0 +1,60 @@
+= Minutes for 2021-06-09
+
+Questions/comments/corrections/follow-up discussion welcome as always
+
+== Page-Based Memory Types (PBMT)
+
+We spent the meeting discussing the latest Svpbmt proposal.
+
+* Linux is still looking to support boards that need features like Svpbmt
+  proposes, and some vendors are proposing custom PTE bits and custom
+  patches in the meantime.  There is an ongoing discussion about how
+  much upstream Linux will aim to support such custom uses of PTEs.
+  (Ideally Linux would only support the standard, but many/most/all
+  RISC-V implementations now have errata, customizations, etc. while
+  the standard develops, and everyone is trying to figure out where the
+  line should be.)
+* We started with a recap of the current proposal, and Greg sent out two
+  side email threads clarifying the exceptions to the normal rules.  The
+  discussion has since continued there.
+
+== "Bufferable" Bit Proposal
+
+There was a long discussion about whether we should add a "bufferable" bit to
+support interconnects that present such a feature.  The idea is that the PTE
+needs control over this bit so that it can temporarily switch the PTE to
+non-bufferable in order to flush out still-in-flight bufferable requests
+on the interconnect, as some interconnects provide no other mechanism for
+flushing in-flight buffered requests that have already sent an (early)
+response of acceptance to the issuer.  RISC-V CPU vendors would like to
+be able to support such interconects even when they do not have control
+over the entire SoC.
+
+(There was an example discussed about DMA descriptors in memory, but I
+wasn't able to take detailed enough notes to reproduce it...if someone
+would like to write that up here, please feel free to do so, and I will
+update the minutes accordingly.)
+
+There were a few objections to this proposal:
+
+* Arguably RISC-V currently only supports interconnects which do not
+  perform buffering plus early write acknowledgment (although such protocols
+  may be in common use).  Such interconnects can be supported today using
+  non-buffered and/or no-early-write-ack modes, albeit with a cost of lower
+  performance.
+* Other microarchitectural alternatives may be possible, e.g., reinterpreting
+  the cacheability attribute (which can be overridden by PBMTs) as a bufferable
+  bit in these situations, or having the microarchitecture translate a FENCE
+  into an interconnect flush mechanism of some kind (according to the ordering
+  rules of the interconnect), rather than having the OS explicitly control the
+  bufferable bit.
+* To the extent this is a somewhat custom solution, it could be prototyped
+  using custom PTE formats (e.g., via satp.MODE == 14 or 15), and then
+  standardized at some point in the future if proven out.
+
+Somewhat related: RISC-V does not currently have the notion of "shareable"
+either.
+
+Given the discussion, the current plan is to proceed with Svpbmt as
+currently proposed, without the bufferable bit, and then to reconsider
+the bufferable bit as part of a future extension or update to Svbpmt.
