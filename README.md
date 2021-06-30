@@ -26,7 +26,14 @@ Mondelli (andrea.mondelli@huawei.com)
 
 # Task Group Status
 
+PDFs of all spec drafts are available at the following link:
+https://github.com/riscv/virtual-memory/tree/main/specs.
+
 ## Assorted minor virtual memory tweaks
+
+Draft available:
+https://github.com/riscv/riscv-isa-manual/pull/611
+
 To be merged into master and reviewed as part of Priv 1.12.
 
 * Sv57 added
@@ -37,7 +44,11 @@ To be merged into master and reviewed as part of Priv 1.12.
 
 ## Svnapot: Naturally-Aligned Power-of-Two Address-Translation Contiguity
 
+Draft available:
+https://github.com/riscv/riscv-isa-manual/pull/628
+
 ### Progress towards Stable status
+
 Working through the RISC-V review process.
 
 * Spec: written, pull request created, reviewed but not merged:
@@ -54,15 +65,19 @@ Working through the RISC-V review process.
 
 ## Svpbmt: Page-based Memory Types
 
-First draft now available:
-https://github.com/riscv/virtual-memory/tree/main/specs.
+First draft now available
+https://github.com/riscv/riscv-isa-manual/pull/663
+
+## Svinval: Fine-Grained Address-Translation Cache Invalidation
+
+First draft now available
+https://github.com/riscv/riscv-isa-manual/pull/668
 
 ## Progress beyond Stable status
-For both extensions we'll have to complete the "Definition of Done" tasks,
+For all of these extensions we'll have to complete the "Definition of Done" tasks,
 including those below, but there is no current timeline on these.
 
 * Full architecture test suite
 * Full support in at least one OS
 * At least one prototype must be implemented as an ASIC or custom
   placed-and-routed design (e.g., GDSII, not necessarily silicon)
-
