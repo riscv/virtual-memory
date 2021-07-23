@@ -1,0 +1,53 @@
+= Minutes for 2021-07-21
+
+Questions/comments/corrections/follow-up discussion welcome as always
+
+== Memory Ordering
+
+Resolving some earlier mailing list discussions: I plan to add some
+wording saying the following:
+
+* There is no formal specification of the interaction of RVWMO with
+  virtual memory, as building such a model is still an open research
+  question.  Nevertheless, we provide guidance to the best of our
+  current ability.
+
+* New rule: if A is an explicit memory access, and I is an implicit
+  (i.e., page table walk) access associated with A, then I precedes A
+  in program order.  If B is an explicit memory access that follows
+  A in program order, and B is a write, then I precedes B in the
+  global memory order.
+
+* Implications: the address translation process for A will not be
+  affected by B.  No FENCE is needed to prevent newer memory accesses
+  from affecting the address translation process for older accesses.
+  No extra FENCE is needed before the "break-before-make" sequence used
+  to change page table entries locally.  (The standard sequence for
+  remote TLB shootdowns still involves a FENCE, per the pre-existing
+  spec guidance.)
+
+* The expectation is that this rule is consistent with existing
+  implementations (e.g., stores will not be sent to memory until all
+  prior accesses have been determined not to fault, and page table
+  walk accesses should pull from memory rather than from the local
+  store queue) and software (i.e., no new fences are needed, and no
+  existing fences are extraneous)
+
+* We chose not to explicitly order earlier implicit reads before
+  subsequent explicit reads.  It was less clear that this is a
+  naturally enforced constraint in all implementations, and there
+  is also less of a need for this constraint.  A future effort to
+  formalize the memory model for virtual memory may choose to
+  address this in more detail.
+
+== Range-based Invalidation
+
+We briefly discussed Freddie's Range-based TLB invalidation instruction
+proposal.  The conclusion was that the topic remains open for
+discussion in the future, but is not something we will pursue at the
+same time as Svinval.
+
+If it were to be built, it would likely use a different encoding than
+the SINVAL instruction anyway, so there is no need to reserve bits
+from rs2 as had been proposed.  It will be easier for Svinval adoption
+if we say that S/HINVAL use the same opcode encodings as S/HFENCE.
